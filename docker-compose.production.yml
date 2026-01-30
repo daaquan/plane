@@ -1,0 +1,137 @@
+x-app-env: &app-env
+  WEB_URL: ${WEB_URL:-http://localhost}
+  DEBUG: 0
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+  GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
+  USE_MINIO: 1
+  SECRET_KEY: ${SECRET_KEY:-60gp0byfz2dvffa45cxl20p1scy9xbpf6d8c5y0geejgkyp1b5}
+  API_KEY_RATE_LIMIT: ${API_KEY_RATE_LIMIT:-60/minute}
+  MINIO_ENDPOINT_SSL: 0
+  LIVE_SERVER_SECRET_KEY: ${LIVE_SERVER_SECRET_KEY:-2FiJk1U2aiVPEQtzLehYGlTSnTnrs7LW}
+  # Database - 192.168.0.239 PostgreSQL, DB: plane
+  PGHOST: 192.168.0.239
+  PGDATABASE: plane
+  POSTGRES_USER: ${POSTGRES_USER:-postgres}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  POSTGRES_DB: plane
+  POSTGRES_PORT: 5432
+  DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@192.168.0.239:5432/plane
+  # Redis - 192.168.0.239
+  REDIS_HOST: 192.168.0.239
+  REDIS_PORT: 6379
+  REDIS_URL: redis://192.168.0.239:6379/
+  # RabbitMQ - 192.168.0.239
+  RABBITMQ_HOST: 192.168.0.239
+  RABBITMQ_PORT: 5672
+  RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-plane}
+  RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-plane}
+  RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-plane}
+  RABBITMQ_VHOST: ${RABBITMQ_VHOST:-plane}
+  AMQP_URL: amqp://${RABBITMQ_USER:-plane}:${RABBITMQ_PASSWORD:-plane}@192.168.0.239:5672/${RABBITMQ_VHOST:-plane}
+  # S3 - RustFS at 192.168.0.111:9000
+  AWS_REGION: ${AWS_REGION:-us-east-1}
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+  AWS_S3_ENDPOINT_URL: http://192.168.0.111:9000
+  AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME:-plane}
+
+x-live-env: &live-env
+  API_BASE_URL: ${API_BASE_URL:-http://api:8000}
+  LIVE_SERVER_SECRET_KEY: ${LIVE_SERVER_SECRET_KEY:-2FiJk1U2aiVPEQtzLehYGlTSnTnrs7LW}
+  REDIS_HOST: 192.168.0.239
+  REDIS_PORT: 6379
+  REDIS_URL: redis://192.168.0.239:6379/
+
+services:
+  web:
+    image: artifacts.plane.so/makeplane/plane-frontend:${APP_RELEASE:-stable}
+    container_name: plane-web
+    restart: always
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - api
+
+  space:
+    image: artifacts.plane.so/makeplane/plane-space:${APP_RELEASE:-stable}
+    container_name: plane-space
+    restart: always
+    ports:
+      - "127.0.0.1:3002:3000"
+    depends_on:
+      - api
+      - web
+
+  admin:
+    image: artifacts.plane.so/makeplane/plane-admin:${APP_RELEASE:-stable}
+    container_name: plane-admin
+    restart: always
+    ports:
+      - "127.0.0.1:3003:3000"
+    depends_on:
+      - api
+      - web
+
+  live:
+    image: artifacts.plane.so/makeplane/plane-live:${APP_RELEASE:-stable}
+    container_name: plane-live
+    restart: always
+    ports:
+      - "127.0.0.1:3004:3000"
+    environment:
+      <<: *live-env
+    depends_on:
+      - api
+      - web
+
+  api:
+    image: artifacts.plane.so/makeplane/plane-backend:${APP_RELEASE:-stable}
+    container_name: plane-api
+    restart: always
+    command: ./bin/docker-entrypoint-api.sh
+    ports:
+      - "127.0.0.1:8080:8000"
+    volumes:
+      - logs_api:/code/plane/logs
+    environment:
+      <<: *app-env
+
+  worker:
+    image: artifacts.plane.so/makeplane/plane-backend:${APP_RELEASE:-stable}
+    container_name: plane-bgworker
+    restart: always
+    command: ./bin/docker-entrypoint-worker.sh
+    volumes:
+      - logs_worker:/code/plane/logs
+    environment:
+      <<: *app-env
+    depends_on:
+      - api
+
+  beat-worker:
+    image: artifacts.plane.so/makeplane/plane-backend:${APP_RELEASE:-stable}
+    container_name: plane-beatworker
+    restart: always
+    command: ./bin/docker-entrypoint-beat.sh
+    volumes:
+      - logs_beat-worker:/code/plane/logs
+    environment:
+      <<: *app-env
+    depends_on:
+      - api
+
+  migrator:
+    image: artifacts.plane.so/makeplane/plane-backend:${APP_RELEASE:-stable}
+    container_name: plane-migrator
+    restart: "no"
+    command: ./bin/docker-entrypoint-migrator.sh
+    volumes:
+      - logs_migrator:/code/plane/logs
+    environment:
+      <<: *app-env
+
+volumes:
+  logs_api:
+  logs_worker:
+  logs_beat-worker:
+  logs_migrator:
