@@ -35,7 +35,7 @@
       ▼
 ┌──────────────────────┐
 │  RustFS (S3)         │
-│  192.168.0.111:9000  │
+│  10.100.0.10:9000    │
 │  Bucket: plane       │
 └──────────────────────┘
 ```
@@ -75,7 +75,7 @@
 
 | Service | Endpoint | Details |
 |---------|----------|---------|
-| RustFS (S3互換) | `http://192.168.0.111:9000` | Bucket: `plane` |
+| RustFS (S3互換) | `http://10.100.0.10:9000` | Bucket: `plane` |
 
 ## Prerequisites
 
@@ -96,7 +96,7 @@ sudo rabbitmqctl set_permissions -p plane plane ".*" ".*" ".*"
 ### 3. RustFS - `plane` バケット
 
 ```bash
-mc alias set rustfs http://192.168.0.111:9000 <ACCESS_KEY> <SECRET_KEY>
+mc alias set rustfs http://10.100.0.10:9000 <ACCESS_KEY> <SECRET_KEY>
 mc mb rustfs/plane --ignore-existing
 ```
 
@@ -171,7 +171,7 @@ proxyコンテナは含まれていないため、ホストのNginxでリバー�
 | `/god-mode/` | 3003 | plane-admin | 管理パネル |
 | `/spaces/` | 3002 | plane-space | 公開スペース |
 | `/live/` | 3004 | plane-live | WebSocket対応 |
-| `/plane/` | - | 192.168.0.111:9000 | RustFS アップロード |
+| `/plane` | - | 10.100.0.10:9000 | RustFS アップロード (末尾スラッシュなし必須) |
 
 ### セットアップ
 
@@ -189,6 +189,10 @@ sudo nginx -t && sudo systemctl reload nginx
 
 設定ファイルの詳細は `nginx-plane.conf` を参照。
 
+> **注意**: RustFS (S3) の location は `location /plane`（末尾スラッシュなし）にすること。
+> `USE_MINIO=1` 時、presigned POST URL は `/plane`（スラッシュなし）になるため、
+> `location /plane/` だとマッチせずアップロードが失敗する。
+
 ## Troubleshooting
 
 ### migrator が長時間実行される
@@ -202,6 +206,14 @@ sudo nginx -t && sudo systemctl reload nginx
 ### API が "Waiting for database migrations" のまま
 
 migrator の完了を待っている状態。`docker logs plane-migrator` でマイグレーション状況を確認。
+
+### プロフィール画像・カバー画像のアップロード失敗
+
+"Failed to upload cover image" / "Error!" が表示される場合:
+
+1. **nginx location を確認** — `location /plane` (末尾スラッシュなし) であること。`/plane/` だと presigned POST がマッチしない。
+2. **RustFS に到達できるか確認** — `curl -s -o /dev/null -w '%{http_code}' http://10.100.0.10:9000/minio/health/live`
+3. **API ログ確認** — `POST /api/assets/v2/workspaces/...` が 200 を返していれば、API 側は正常。問題はブラウザ → RustFS の経路。
 
 ### RabbitMQ 接続エラー
 
