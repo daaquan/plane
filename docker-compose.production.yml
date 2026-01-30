@@ -48,7 +48,7 @@ services:
     container_name: plane-web
     restart: always
     ports:
-      - "127.0.0.1:3000:3000"
+      - "0.0.0.0:3000:3000"
     depends_on:
       - api
 
@@ -57,7 +57,7 @@ services:
     container_name: plane-space
     restart: always
     ports:
-      - "127.0.0.1:3002:3000"
+      - "0.0.0.0:3002:3000"
     depends_on:
       - api
       - web
@@ -67,7 +67,7 @@ services:
     container_name: plane-admin
     restart: always
     ports:
-      - "127.0.0.1:3003:3000"
+      - "0.0.0.0:3003:3000"
     depends_on:
       - api
       - web
@@ -77,7 +77,7 @@ services:
     container_name: plane-live
     restart: always
     ports:
-      - "127.0.0.1:3004:3000"
+      - "0.0.0.0:3004:3000"
     environment:
       <<: *live-env
     depends_on:
@@ -90,7 +90,7 @@ services:
     restart: always
     command: ./bin/docker-entrypoint-api.sh
     ports:
-      - "127.0.0.1:8080:8000"
+      - "0.0.0.0:8080:8000"
     volumes:
       - logs_api:/code/plane/logs
     environment:
