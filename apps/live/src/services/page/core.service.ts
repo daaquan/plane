@@ -4,16 +4,24 @@
  * See the LICENSE file for details.
  */
 
+import { AxiosError } from "axios";
 import { logger } from "@plane/logger";
 import type { TPage } from "@plane/types";
 // services
 import { AppError } from "@/lib/errors";
 import { APIService } from "../api.service";
 
+interface RedirectResponse {
+  status: number;
+  headers?: {
+    location?: string;
+  };
+}
+
 export type TPageDescriptionPayload = {
   description_binary: string;
   description_html: string;
-  description: object;
+  description_json: object;
 };
 
 export type TUserMention = {
@@ -53,7 +61,7 @@ export abstract class PageCoreService extends APIService {
         },
         responseType: "arraybuffer",
       });
-      const data = response?.data;
+      const data: unknown = response?.data;
       if (!Buffer.isBuffer(data)) {
         throw new Error("Expected response to be a Buffer");
       }
@@ -83,7 +91,7 @@ export abstract class PageCoreService extends APIService {
 
     // Create an abort listener that will reject the pending promise
     let abortListener: (() => void) | undefined;
-    const abortPromise = new Promise((_, reject) => {
+    const abortPromise = new Promise<never>((_resolve, reject) => {
       if (abortSignal) {
         abortListener = () => {
           reject(new AppError(new DOMException("Aborted", "AbortError")));
@@ -93,13 +101,13 @@ export abstract class PageCoreService extends APIService {
     });
 
     try {
-      return await Promise.race([
+      const result = await Promise.race([
         this.patch(`${this.basePath}/pages/${pageId}/`, data, {
           headers: this.getHeader(),
           signal: abortSignal,
         })
-          .then((response) => response?.data)
-          .catch((error) => {
+          .then((response) => response?.data as TPage)
+          .catch((error: unknown) => {
             const appError = new AppError(error, {
               context: { operation: "updatePageProperties", pageId },
             });
@@ -113,6 +121,7 @@ export abstract class PageCoreService extends APIService {
           }),
         abortPromise,
       ]);
+      return result;
     } finally {
       // Clean up abort listener
       if (abortSignal && abortListener) {
@@ -121,12 +130,12 @@ export abstract class PageCoreService extends APIService {
     }
   }
 
-  async updateDescriptionBinary(pageId: string, data: TPageDescriptionPayload): Promise<any> {
+  async updateDescriptionBinary(pageId: string, data: TPageDescriptionPayload): Promise<unknown> {
     try {
       const response = await this.patch(`${this.basePath}/pages/${pageId}/description/`, data, {
         headers: this.getHeader(),
       });
-      return response?.data as unknown;
+      return response?.data;
     } catch (error) {
       const appError = new AppError(error, {
         context: { operation: "updateDescriptionBinary", pageId },
@@ -183,18 +192,21 @@ export abstract class PageCoreService extends APIService {
       });
       // If we get a 302, the Location header contains the presigned URL
       if (response.status === 302 || response.status === 301) {
-        return response.headers?.location || null;
+        const location = response.headers?.location as string | undefined;
+        return location ?? null;
       }
       return null;
     } catch (error) {
       // Axios throws on 3xx when maxRedirects is 0, so we need to handle the redirect from the error
-      if ((error as any).response?.status === 302 || (error as any).response?.status === 301) {
-        return (error as any).response.headers?.location || null;
+      const axiosError = error as AxiosError<unknown, unknown>;
+      const redirectResponse = axiosError.response as RedirectResponse | undefined;
+      if (redirectResponse?.status === 302 || redirectResponse?.status === 301) {
+        return redirectResponse.headers?.location ?? null;
       }
       logger.error("Failed to resolve image asset URL", {
         assetId,
         workspaceSlug,
-        error: (error as any).message,
+        error: axiosError.message,
       });
       return null;
     }
